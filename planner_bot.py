@@ -397,6 +397,10 @@ async def save_task_with_reminder(update: Update, context: ContextTypes.DEFAULT_
     user_id = update.effective_user.id
     
     # Сохраняем задачу
+    # Определяем включено ли напоминание
+    reminder_enabled = context.user_data.get('enable_reminder', False)
+    reminder_type = context.user_data.get('reminder_time') if reminder_enabled else None
+    
     success = db.add_task(
         user_id=user_id,
         title=context.user_data['task_title'],
@@ -404,7 +408,9 @@ async def save_task_with_reminder(update: Update, context: ContextTypes.DEFAULT_
         priority=context.user_data['task_priority'],
         due_date=context.user_data['task_date'],
         due_time=context.user_data['task_time'],
-        description=context.user_data['task_description']
+        description=context.user_data['task_description'],
+        reminder_enabled=reminder_enabled,
+        reminder_type=reminder_type
     )
     
     if success:
