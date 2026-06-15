@@ -363,7 +363,7 @@ async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    await update.message.reply_text("Вот твой список задач: 👇")
+    await update.message.reply_text("📋 ВОТ ТВОИ ЗАДАЧИ 👇")
     
     for task in tasks:
         text = format_task(task)
