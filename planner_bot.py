@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -351,7 +352,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== SHOW TASKS ====================
 
 async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать все задачи с кнопками"""
+    """Показать все активные задачи"""
     user_id = update.effective_user.id
     tasks = db.get_all_tasks(user_id, completed=False)
     
@@ -362,23 +363,17 @@ async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    await update.message.reply_text("📋 *ВСЕ ЗАДАЧИ:*", parse_mode="HTML")
+    text = "📋 *ВСЕ ЗАДАЧИ:*\n\n"
     
-    for task in tasks:
-        text = format_task(task)
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Завершить", callback_data=f'complete_{task["id"]}'),
-                InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{task["id"]}')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    for idx, task in enumerate(tasks, 1):
+        text += f"{idx}. {format_task(task)}\n\n"
+    
+    text += "_Используй /complete ID или /delete ID_"
+    
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 async def show_today_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать задачи на сегодня с кнопками"""
+    """Показать задачи на сегодня"""
     user_id = update.effective_user.id
     tasks = db.get_today_tasks(user_id)
     
@@ -389,20 +384,14 @@ async def show_today_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    await update.message.reply_text("📅 *ЗАДАЧИ НА СЕГОДНЯ:*", parse_mode="HTML")
+    text = "📅 *ЗАДАЧИ НА СЕГОДНЯ:*\n\n"
     
-    for task in tasks:
-        text = format_task(task)
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Завершить", callback_data=f'complete_{task["id"]}'),
-                InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{task["id"]}')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    for idx, task in enumerate(tasks, 1):
+        text += f"{idx}. {format_task(task)}\n\n"
+    
+    text += "_Используй /complete ID или /delete ID_"
+    
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 # ==================== COMPLETE/DELETE ====================
 
@@ -446,36 +435,6 @@ async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_main_keyboard()
         )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопок завершения и удаления"""
-    query = update.callback_query
-    data = query.data
-    
-    await query.answer()
-    
-    try:
-        if data.startswith('complete_'):
-            task_id = int(data.split('_')[1])
-            if db.complete_task(task_id):
-                await query.edit_message_text(
-                    text="✅ Задача завершена!",
-                    parse_mode="HTML"
-                )
-            else:
-                await query.answer("❌ Задача не найдена", show_alert=True)
-        
-        elif data.startswith('delete_'):
-            task_id = int(data.split('_')[1])
-            if db.delete_task(task_id):
-                await query.edit_message_text(
-                    text="🗑️ Задача удалена!",
-                    parse_mode="HTML"
-                )
-            else:
-                await query.answer("❌ Задача не найдена", show_alert=True)
-    except (ValueError, IndexError):
-        await query.answer("❌ Ошибка при обработке", show_alert=True)
-
 # ==================== HANDLE TEXT ====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -509,9 +468,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     app = Application.builder().token(BOT_TOKEN).build()
-    
-    # Callback обработчик для кнопок (должен быть первым!)
-    app.add_handler(CallbackQueryHandler(button_callback))
     
     # Команды
     app.add_handler(CommandHandler("start", start))
