@@ -136,13 +136,25 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /status"""
     user_id = update.effective_user.id
     active, completed = db.get_tasks_count(user_id)
+    daily_stats = db.get_daily_stats(user_id)
+    
+    # Прогресс-бар
+    percentage = daily_stats['percentage']
+    bar_length = 10
+    filled = int(bar_length * percentage / 100)
+    bar = '█' * filled + '░' * (bar_length - filled)
     
     text = f"""
-📊 *ТВОЙ СТАТУС:*
+📊 *ОБЩАЯ СТАТИСТИКА:*
 ✅ Выполнено: {completed}
 📌 Активных: {active}
 ━━━━━━━━━━━━━━
 📈 Итого: {active + completed}
+
+📅 *СЕГОДНЯШНЯЯ СТАТИСТИКА:*
+Задач на сегодня: {daily_stats['total']}
+Выполнено: {daily_stats['completed']}
+Прогресс: [{bar}] {percentage}%
 """
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
