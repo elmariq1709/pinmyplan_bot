@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # States for conversations
-ADD_TITLE, ADD_CATEGORY, ADD_PRIORITY, ADD_DATE, ADD_TIME, ADD_DESCRIPTION = range(6)
+ADD_TITLE, ADD_CATEGORY, ADD_DATE, ADD_TIME = range(4)
 
 # Database
 db = Database()
@@ -41,10 +41,18 @@ def get_category_emoji(category: str) -> str:
 def format_task(task: dict) -> str:
     """Форматировать задачу для отображения"""
     title = task['title']
-    priority_emoji = get_priority_emoji(task['priority'])
-    category_emoji = get_category_emoji(task['category']) if task['category'] else '📋'
     
-    text = f"{priority_emoji} {category_emoji} • {title}"
+    # Emoji для категорий
+    category_emoji_map = {
+        'work': '💼',
+        'personal': '🎯',
+        'sport': '💪',
+        'home': '🏠'
+    }
+    
+    category_emoji = category_emoji_map.get(task['category'], '📋') if task['category'] else '📋'
+    
+    text = f"{category_emoji} • {title}"
     
     if task['due_date']:
         text += f"\n📅 {task['due_date']}"
@@ -67,14 +75,11 @@ def get_main_keyboard():
 
 def get_category_keyboard():
     """Получить клавиатуру выбора категории"""
-    buttons = [[]]
-    for i, (emoji, category) in enumerate(CATEGORIES.items()):
-        buttons[-1].append(f"{emoji}")
-        if (i + 1) % 3 == 0:
-            buttons.append([])
-    
-    buttons.append(['Без категории', '⬅️ Отмена'])
-    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    return ReplyKeyboardMarkup([
+        ['Работа', 'Личное'],
+        ['Спорт', 'Дом'],
+        ['Без категории', '⬅️ Отмена']
+    ], resize_keyboard=True)
 
 def get_priority_keyboard():
     """Получить клавиатуру выбора приоритета"""
@@ -113,23 +118,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 1. Нажми "➕ Новая задача" или используй /add
 2. Введи название задачи
 3. Выбери категорию (опционально)
-4. Выбери приоритет
-5. Укажи дату (опционально)
-6. Укажи время (опционально)
-7. Добавь описание (опционально)
-
-✅ *ПРИОРИТЕТЫ:*
-🔴 - высокий
-🟡 - средний
-🟢 - низкий
+4. Укажи дату (опционально)
+5. Укажи время (опционально)
 
 🏷️ *КАТЕГОРИИ:*
-💼 - работа
-🏠 - дом
-🎓 - учеба
-💪 - здоровье
-🎯 - личное
-🛒 - покупки
+💼 - Работа
+🎯 - Личное
+💪 - Спорт
+🏠 - Дом
 """
     await update.message.reply_text(help_text, reply_markup=get_main_keyboard())
 
@@ -194,28 +190,13 @@ async def add_task_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     category = None
     if text != 'Без категории':
-        for emoji, cat in CATEGORIES.items():
-            if emoji == text:
-                category = cat
+        text_lower = text.lower()
+        for cat_name, cat_value in CATEGORIES.items():
+            if cat_name == text_lower:
+                category = cat_value
                 break
     
     context.user_data['task_category'] = category
-    await update.message.reply_text(
-        "⚡ Выбери приоритет:",
-        reply_markup=get_priority_keyboard()
-    )
-    return ADD_PRIORITY
-
-async def add_task_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получить приоритет"""
-    emoji = update.message.text
-    
-    if emoji == '⬅️ Отмена':
-        await update.message.reply_text("❌ Отменено", reply_markup=get_main_keyboard())
-        return ConversationHandler.END
-    
-    priority = PRIORITIES.get(emoji, 'medium')
-    context.user_data['task_priority'] = priority
     
     keyboard = [
         ['📅 Сегодня', '📅 Завтра'],
@@ -279,7 +260,7 @@ async def add_task_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADD_TIME
 
 async def add_task_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получить время"""
+    """Получить время и сохранить задачу"""
     text = update.message.text
     
     if text == '⬅️ Отмена':
@@ -299,36 +280,16 @@ async def add_task_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data['task_time'] = due_time
     
-    await update.message.reply_text(
-        "📝 Добавь описание (опционально) или пропусти:",
-        reply_markup=ReplyKeyboardMarkup([
-            ['Пропустить'],
-            ['⬅️ Отмена']
-        ], resize_keyboard=True)
-    )
-    return ADD_DESCRIPTION
-
-async def add_task_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получить описание и сохранить задачу"""
-    text = update.message.text
-    
-    if text == '⬅️ Отмена':
-        await update.message.reply_text("❌ Отменено", reply_markup=get_main_keyboard())
-        return ConversationHandler.END
-    
-    description = None if text == 'Пропустить' else text
-    context.user_data['task_description'] = description
-    
     # Сохраняем задачу
     user_id = update.effective_user.id
     success = db.add_task(
         user_id=user_id,
         title=context.user_data['task_title'],
         category=context.user_data['task_category'],
-        priority=context.user_data['task_priority'],
+        priority='medium',
         due_date=context.user_data['task_date'],
-        due_time=context.user_data['task_time'],
-        description=description
+        due_time=due_time,
+        description=None
     )
     
     if success:
@@ -534,10 +495,8 @@ def main():
         states={
             ADD_TITLE: [MessageHandler(filters.TEXT, add_task_title)],
             ADD_CATEGORY: [MessageHandler(filters.TEXT, add_task_category)],
-            ADD_PRIORITY: [MessageHandler(filters.TEXT, add_task_priority)],
             ADD_DATE: [MessageHandler(filters.TEXT, add_task_date)],
             ADD_TIME: [MessageHandler(filters.TEXT, add_task_time)],
-            ADD_DESCRIPTION: [MessageHandler(filters.TEXT, add_task_description)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
