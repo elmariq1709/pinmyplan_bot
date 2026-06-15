@@ -203,6 +203,38 @@ class Database:
         conn.close()
         return active, completed
 
+    def get_daily_stats(self, user_id: int) -> dict:
+        """Получить статистику выполнения задач на сегодня"""
+        today = datetime.now().strftime(DATE_FORMAT)
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Все задачи на сегодня
+        cursor.execute(
+            'SELECT COUNT(*) FROM tasks WHERE user_id = ? AND due_date = ?',
+            (user_id, today)
+        )
+        total_today = cursor.fetchone()[0]
+        
+        # Выполненные на сегодня
+        cursor.execute(
+            'SELECT COUNT(*) FROM tasks WHERE user_id = ? AND due_date = ? AND completed = 1',
+            (user_id, today)
+        )
+        completed_today = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        percentage = 0
+        if total_today > 0:
+            percentage = int((completed_today / total_today) * 100)
+        
+        return {
+            'total': total_today,
+            'completed': completed_today,
+            'percentage': percentage
+        }
+
     def add_reminder(self, task_id: int, user_id: int, reminder_time: str) -> bool:
         """Добавить напоминание"""
         conn = sqlite3.connect(self.db_path)
