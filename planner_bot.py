@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -351,36 +352,63 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== SHOW TASKS ====================
 
 async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать все задачи с кнопками"""
+    """Показать все задачи (активные + выполненные)"""
     user_id = update.effective_user.id
-    tasks = db.get_all_tasks(user_id, completed=False)
+    active_tasks = db.get_all_tasks(user_id, completed=False)
+    completed_tasks = db.get_all_tasks(user_id, completed=True)
     
-    if not tasks:
+    if not active_tasks and not completed_tasks:
         await update.message.reply_text(
-            "📭 У тебя нет активных задач!",
+            "📭 У тебя нет задач!",
             reply_markup=get_main_keyboard()
         )
         return
     
-    await update.message.reply_text("📋 *ВСЕ ЗАДАЧИ:*", parse_mode="HTML")
+    text = "📋 *ВСЕ ЗАДАЧИ:*\n\n"
     
-    for task in tasks:
-        text = format_task(task)
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Завершить", callback_data=f'complete_{task["id"]}'),
-                InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{task["id"]}')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    # Активные задачи
+    if active_tasks:
+        text += "*Активные:*\n"
+        for idx, task in enumerate(active_tasks, 1):
+            title = task['title']
+            priority_emoji = get_priority_emoji(task['priority'])
+            category_emoji = get_category_emoji(task['category']) if task['category'] else '📋'
+            
+            text += f"{idx}. {priority_emoji} {category_emoji} • {title}"
+            
+            if task['due_date']:
+                text += f" 📅 {task['due_date']}"
+            if task['due_time']:
+                text += f" ⏰ {task['due_time']}"
+            
+            text += f" (ID: {task['id']})\n"
+    
+    # Выполненные задачи
+    if completed_tasks:
+        text += "\n*Выполненные:* ✅\n"
+        for task in completed_tasks:
+            title = task['title']
+            text += f"~{title}~\n"
+    
+    text += "\n_Используй /complete ID или /delete ID_"
+    
+    await update.message.reply_text(text, reply_markup=get_main_keyboard(), parse_mode="MarkdownV2")
 
 async def show_today_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать задачи на сегодня с кнопками"""
+    """Показать задачи на сегодня (активные + выполненные)"""
     user_id = update.effective_user.id
-    tasks = db.get_today_tasks(user_id)
+    today = datetime.now().strftime(DATE_FORMAT)
+    
+    conn = sqlite3.connect(db.db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        'SELECT * FROM tasks WHERE user_id = ? AND due_date = ? ORDER BY completed ASC, due_time ASC',
+        (user_id, today)
+    )
+    tasks = [dict(row) for row in cursor.fetchall()]
+    conn.close()
     
     if not tasks:
         await update.message.reply_text(
@@ -389,20 +417,26 @@ async def show_today_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    await update.message.reply_text("📅 *ЗАДАЧИ НА СЕГОДНЯ:*", parse_mode="HTML")
+    text = "📅 *ЗАДАЧИ НА СЕГОДНЯ:*\n\n"
     
-    for task in tasks:
-        text = format_task(task)
+    for idx, task in enumerate(tasks, 1):
+        title = task['title']
+        priority_emoji = get_priority_emoji(task['priority'])
+        category_emoji = get_category_emoji(task['category']) if task['category'] else '📋'
         
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Завершить", callback_data=f'complete_{task["id"]}'),
-                InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{task["id"]}')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        if task['completed']:
+            # Зачеркнутая выполненная задача
+            text += f"~{idx}\. {priority_emoji} {category_emoji} • {title}~"
+        else:
+            text += f"{idx}. {priority_emoji} {category_emoji} • {title}"
+            if task['due_time']:
+                text += f" ⏰ {task['due_time']}"
         
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        text += f" (ID: {task['id']})\n"
+    
+    text += "\n_Используй /complete ID или /delete ID_"
+    
+    await update.message.reply_text(text, reply_markup=get_main_keyboard(), parse_mode="MarkdownV2")
 
 # ==================== COMPLETE/DELETE ====================
 
