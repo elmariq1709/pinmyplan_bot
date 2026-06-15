@@ -18,12 +18,10 @@ PRIORITIES = {
 
 # CATEGORIES (emoji)
 CATEGORIES = {
-    '💼': 'work',
-    '🏠': 'home',
-    '🎓': 'learning',
-    '💪': 'health',
-    '🎯': 'personal',
-    '🛒': 'shopping'
+    'работа': 'work',
+    'личное': 'personal',
+    'спорт': 'sport',
+    'дом': 'home'
 }
 
 # TIME FORMAT
