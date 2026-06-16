@@ -1,14 +1,11 @@
 import logging
 import sqlite3
-import os
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, filters, ContextTypes
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from config import BOT_TOKEN, CATEGORIES, PRIORITIES, DATE_FORMAT, DATETIME_FORMAT
 from database import Database
 
@@ -471,73 +468,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
-# ==================== REMINDERS ====================
-
-async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет задачи и отправляет напоминания каждое утро в 8:00"""
-    try:
-        conn = sqlite3.connect(db.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime(DATE_FORMAT)
-        
-        # Получаем все задачи на завтра
-        cursor.execute(
-            'SELECT * FROM tasks WHERE due_date = ? AND completed = 0',
-            (tomorrow,)
-        )
-        tasks = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        # Отправляем напоминания каждому пользователю
-        unique_users = set(task['user_id'] for task in tasks)
-        
-        for user_id in unique_users:
-            user_tasks = [t for t in tasks if t['user_id'] == user_id]
-            
-            text = "📅 *НАПОМИНАНИЕ НА ЗАВТРА:*\n\n"
-            for task in user_tasks:
-                text += f"• {task['title']}"
-                if task['due_time']:
-                    text += f" ⏰ {task['due_time']}"
-                text += "\n"
-            
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=text,
-                    parse_mode="MarkdownV2"
-                )
-                logger.info(f"📬 Напоминание отправлено пользователю {user_id}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка при отправке напоминания: {e}")
-    
-    except Exception as e:
-        logger.error(f"❌ Ошибка в check_reminders: {e}")
-
 # ==================== MAIN ====================
 
 def main():
-    """Запуск бота с напоминаниями"""
+    """Запуск бота"""
     app = Application.builder().token(BOT_TOKEN).build()
-    
-    # ===== SCHEDULER для напоминаний =====
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        check_reminders,
-        trigger=CronTrigger(hour=8, minute=0),
-        args=(app.context,),
-        id='daily_reminders',
-        name='Daily reminders at 8:00 AM',
-        replace_existing=True
-    )
-    
-    async def post_init(app: Application) -> None:
-        scheduler.start()
-        logger.info("🕐 Scheduler запущен! Напоминания будут в 8:00 каждый день")
-    
-    app.post_init = post_init
     
     # Callback обработчик для кнопок (должен быть первым!)
     app.add_handler(CallbackQueryHandler(button_callback))
@@ -574,7 +509,7 @@ def main():
     # Error handler
     app.add_error_handler(error_handler)
     
-    # Запуск с polling
+    # Запуск
     logger.info("🚀 Бот запущен!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
