@@ -519,7 +519,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
 # ==================== MAIN ====================
 
 def main():
-    """Запуск бота с webhook"""
+    """Запуск бота с напоминаниями"""
     app = Application.builder().token(BOT_TOKEN).build()
     
     # ===== SCHEDULER для напоминаний =====
@@ -574,19 +574,9 @@ def main():
     # Error handler
     app.add_error_handler(error_handler)
     
-    # Webhook на Railway
-    port = int(os.environ.get('PORT', 8080))
-    webhook_url = os.environ.get('WEBHOOK_URL', f"https://your-app.railway.app")
-    
-    logger.info(f"🚀 Бот запущен на webhook: {webhook_url}")
-    logger.info(f"📡 Слушаю на порту {port}")
-    
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path="/telegram",
-        webhook_url=f"{webhook_url}/telegram"
-    )
+    # Запуск с polling
+    logger.info("🚀 Бот запущен!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
